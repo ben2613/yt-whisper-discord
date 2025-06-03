@@ -69,7 +69,7 @@ yt-whisper-discord/
 ├── diart_processor.py     # Handles VAD and diarization with diart (optional)
 ├── whisper_transcriber.py # Wraps faster-whisper
 ├── discord_bot.py         # Handles Discord messaging
-├── config.py              # API keys, channel IDs, etc.
+├── .env                   # API keys, channel IDs, etc.
 ├── requirements.txt
 └── README.md
 ```
