@@ -8,3 +8,5 @@ DISCORD_TOKEN=YOUR_DISCORD_BOT_TOKEN
 
 # Poll interval in seconds
 POLL_INTERVAL=10
+
+USE_DIART=False
