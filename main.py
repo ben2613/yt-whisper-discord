@@ -6,7 +6,7 @@ import os
 from holodex_monitor import HolodexMonitor
 from audio_streamer import AudioStreamer
 from whisper_transcriber import WhisperTranscriber
-from discord_bot import DiscordBot
+from discord_bot import DiscordBot, setup_commands
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -49,6 +49,10 @@ def on_channel_update(guild_id, new_channel_id):
 
 async def main():
     discord_bot = DiscordBot(DISCORD_TOKEN)
+    
+    # Set up commands after creating bot instance
+    setup_commands(discord_bot)
+    
     # Register callback for channel updates
     discord_bot.on_channel_update = on_channel_update
 
