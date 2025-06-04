@@ -106,6 +106,27 @@ yt-whisper-discord/
 
 ---
 
+## Next Implementation Priority
+
+1. **Holodex Live Monitor** (`holodex_monitor.py`)
+   - Use Holodex API to check if a channel is live
+   - Return the live video ID when found
+   - Handle API errors gracefully
+   - Add proper async HTTP requests
+
+2. **Audio Streamer** (`audio_streamer.py`)
+   - Integrate yt-dlp and ffmpeg to extract audio
+   - Stream audio in real-time
+
+3. **Whisper Transcriber** (`whisper_transcriber.py`)
+   - Integrate whisper_streaming for transcription
+   - Process audio chunks from the streamer
+
+4. **Update Requirements**
+   - Add missing dependencies: `yt-dlp`, whisper streaming dependencies, HTTP client libraries
+
+---
+
 ## References
 - [ufal/whisper_streaming](https://github.com/ufal/whisper_streaming)
 - [Holodex API Docs](https://holodex.stoplight.io/docs/holodex/)
