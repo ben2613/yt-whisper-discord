@@ -14,6 +14,9 @@ class DiscordBot(commands.Bot):
         self.on_guild_join_callback = None  # Callback for when bot joins a guild
         self.on_guild_remove_callback = None  # Callback for when bot leaves a guild
         self.on_settings_update_callback = None  # Callback when any setting is updated
+        self.on_manual_start_callback = None  # Callback for manual start
+        self.on_manual_stop_callback = None  # Callback for manual stop
+        self.get_monitor_status_callback = None  # Callback to get current monitor status
 
     async def setup_hook(self):
         # Commands are auto-registered when using @bot.tree.command()
@@ -92,6 +95,50 @@ def setup_commands(bot):
             
         await interaction.response.send_message(f"Output channel set to {channel.mention}.", ephemeral=True)
 
+    @bot.tree.command(name="start", description="Manually start the transcript monitoring service.")
+    async def start_monitoring(interaction: discord.Interaction):
+        guild_id = interaction.guild_id
+        
+        # Check if properly configured
+        settings = bot.get_guild_settings(guild_id)
+        has_holodex = bool(settings.get("holodex_channel_id"))
+        has_output = bool(settings.get("output_channel_id"))
+        
+        if not (has_holodex and has_output):
+            missing = []
+            if not has_holodex:
+                missing.append("Holodex channel ID (`/set_monitor_channel`)")
+            if not has_output:
+                missing.append("Output channel (`/set_output_channel`)")
+            
+            await interaction.response.send_message(
+                f"❌ Cannot start monitoring. Missing configuration:\n• " + "\n• ".join(missing), 
+                ephemeral=True
+            )
+            return
+        
+        if bot.on_manual_start_callback:
+            success = await bot.on_manual_start_callback(guild_id, bot)
+            if success:
+                await interaction.response.send_message("✅ Transcript monitoring started!", ephemeral=True)
+            else:
+                await interaction.response.send_message("⚠️ Monitoring is already running.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Service not available.", ephemeral=True)
+
+    @bot.tree.command(name="stop", description="Manually stop the transcript monitoring service.")
+    async def stop_monitoring(interaction: discord.Interaction):
+        guild_id = interaction.guild_id
+        
+        if bot.on_manual_stop_callback:
+            success = await bot.on_manual_stop_callback(guild_id)
+            if success:
+                await interaction.response.send_message("⏹️ Transcript monitoring stopped.", ephemeral=True)
+            else:
+                await interaction.response.send_message("⚠️ Monitoring is not currently running.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Service not available.", ephemeral=True)
+
     @bot.tree.command(name="status", description="Check the current configuration and monitoring status.")
     async def status(interaction: discord.Interaction):
         guild_id = interaction.guild_id
@@ -101,19 +148,38 @@ def setup_commands(bot):
         output_id = settings.get("output_channel_id")
         output_channel = f"<#{output_id}>" if output_id else "Not set"
         
-        # Check if monitoring is active (this would need to be passed from main.py)
-        status_text = "✅ **Configuration Status:**\n"
-        status_text += f"**Holodex Channel ID:** {holodex_id}\n"
-        status_text += f"**Output Channel:** {output_channel}\n"
+        # Get current monitoring status
+        is_monitoring = False
+        if bot.get_monitor_status_callback:
+            is_monitoring = bot.get_monitor_status_callback(guild_id)
         
-        if holodex_id != "Not set" and output_id:
-            status_text += "\n🟢 **Status:** Monitoring active"
+        status_text = "📊 **Bot Status:**\n"
+        status_text += f"**Holodex Channel ID:** {holodex_id}\n"
+        status_text += f"**Output Channel:** {output_channel}\n\n"
+        
+        # Configuration status
+        config_complete = holodex_id != "Not set" and output_id
+        if config_complete:
+            status_text += "✅ **Configuration:** Complete\n"
         else:
-            status_text += "\n🔴 **Status:** Monitoring inactive (incomplete configuration)"
-            status_text += "\n\n**To start monitoring:**"
+            status_text += "❌ **Configuration:** Incomplete\n"
+        
+        # Monitoring status
+        if is_monitoring:
+            status_text += "🟢 **Monitoring:** Active\n"
+        else:
+            status_text += "🔴 **Monitoring:** Inactive\n"
+        
+        # Instructions
+        if not config_complete:
+            status_text += "\n**⚙️ Setup Required:**"
             if holodex_id == "Not set":
                 status_text += "\n• Set Holodex channel ID with `/set_monitor_channel`"
             if not output_id:
                 status_text += "\n• Set output channel with `/set_output_channel`"
+        elif not is_monitoring:
+            status_text += "\n**🚀 Ready to start:** Use `/start` to begin monitoring"
+        else:
+            status_text += "\n**⏹️ Manual control:** Use `/stop` to pause monitoring"
         
         await interaction.response.send_message(status_text, ephemeral=True) 

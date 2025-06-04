@@ -19,6 +19,7 @@ POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
 # Global dicts to manage monitors and tasks per guild
 monitors = {}
 tasks = {}
+manually_stopped = {}  # Track which guilds have been manually stopped
 
 def is_guild_configured(bot, guild_id):
     """Check if guild has both holodex_channel_id and output_channel_id configured"""
@@ -28,6 +29,10 @@ def is_guild_configured(bot, guild_id):
     
     print(f"Guild {guild_id} config check - Holodex: {has_holodex_channel}, Output: {has_output_channel}")
     return has_holodex_channel and has_output_channel
+
+def is_monitoring_active(guild_id):
+    """Check if monitoring is currently active for a guild"""
+    return guild_id in tasks and not tasks[guild_id].done()
 
 async def monitor_guild(guild_id, bot):
     """Monitor a specific guild for live streams"""
@@ -53,46 +58,56 @@ async def monitor_guild(guild_id, bot):
         print(f"Monitor task for guild {guild_id} was cancelled")
         raise
 
-async def start_guild_monitor(guild_id, bot):
-    """Start monitoring for a specific guild if properly configured"""
+async def start_guild_monitor(guild_id, bot, force=False):
+    """Start monitoring for a specific guild if properly configured and not manually stopped"""
     if not is_guild_configured(bot, guild_id):
         print(f"Guild {guild_id} not fully configured - skipping monitor start")
         return False
     
-    if guild_id not in tasks:
+    # Check if manually stopped (unless forced)
+    if not force and manually_stopped.get(guild_id, False):
+        print(f"Guild {guild_id} manually stopped - skipping auto-start")
+        return False
+    
+    if guild_id not in tasks or tasks[guild_id].done():
         print(f"Starting monitor for guild {guild_id}")
         tasks[guild_id] = asyncio.create_task(monitor_guild(guild_id, bot))
+        manually_stopped[guild_id] = False  # Clear manual stop flag
         return True
     else:
         print(f"Monitor for guild {guild_id} already running")
         return False
 
-async def stop_guild_monitor(guild_id):
+async def stop_guild_monitor(guild_id, manual=False):
     """Stop monitoring for a specific guild"""
-    if guild_id in tasks:
-        print(f"Stopping monitor for guild {guild_id}")
+    if guild_id in tasks and not tasks[guild_id].done():
+        print(f"Stopping monitor for guild {guild_id}" + (" (manual)" if manual else ""))
         tasks[guild_id].cancel()
         try:
             await tasks[guild_id]
         except asyncio.CancelledError:
             pass
-        del tasks[guild_id]
-    
-    # Clean up monitor
-    if guild_id in monitors:
-        del monitors[guild_id]
+        
+        if manual:
+            manually_stopped[guild_id] = True
+        
+        return True
+    else:
+        print(f"Monitor for guild {guild_id} not running")
+        return False
 
 async def check_and_start_monitor(guild_id, bot):
-    """Check if guild is configured and start/stop monitor accordingly"""
+    """Check if guild is configured and start/stop monitor accordingly (respects manual stop)"""
     if is_guild_configured(bot, guild_id):
-        # If not already running, start it
-        if guild_id not in tasks:
-            started = await start_guild_monitor(guild_id, bot)
-            if started:
-                print(f"✅ Monitor started for guild {guild_id} - configuration complete!")
+        # If not already running and not manually stopped, start it
+        if guild_id not in tasks or tasks[guild_id].done():
+            if not manually_stopped.get(guild_id, False):
+                started = await start_guild_monitor(guild_id, bot)
+                if started:
+                    print(f"✅ Monitor started for guild {guild_id} - configuration complete!")
     else:
         # If running but no longer configured, stop it
-        if guild_id in tasks:
+        if guild_id in tasks and not tasks[guild_id].done():
             await stop_guild_monitor(guild_id)
             print(f"⚠️ Monitor stopped for guild {guild_id} - configuration incomplete")
 
@@ -108,12 +123,33 @@ async def on_guild_join(guild_id, bot):
     await start_guild_monitor(guild_id, bot)
 
 async def on_guild_remove(guild_id):
-    """Called when bot leaves a guild - stop monitoring"""
+    """Called when bot leaves a guild - stop monitoring and cleanup"""
     await stop_guild_monitor(guild_id)
+    # Clean up manual stop tracking
+    if guild_id in manually_stopped:
+        del manually_stopped[guild_id]
+    # Clean up monitor
+    if guild_id in monitors:
+        del monitors[guild_id]
 
 async def on_settings_update(guild_id, bot):
     """Called when guild settings are updated - check if monitoring should start/stop"""
     await check_and_start_monitor(guild_id, bot)
+
+async def on_manual_start(guild_id, bot):
+    """Handle manual start command"""
+    if not is_guild_configured(bot, guild_id):
+        return False
+    
+    return await start_guild_monitor(guild_id, bot, force=True)
+
+async def on_manual_stop(guild_id):
+    """Handle manual stop command"""
+    return await stop_guild_monitor(guild_id, manual=True)
+
+def get_monitor_status(guild_id):
+    """Get current monitoring status for a guild"""
+    return is_monitoring_active(guild_id)
 
 async def main():
     discord_bot = DiscordBot(DISCORD_TOKEN)
@@ -126,6 +162,9 @@ async def main():
     discord_bot.on_guild_join_callback = on_guild_join
     discord_bot.on_guild_remove_callback = on_guild_remove
     discord_bot.on_settings_update_callback = on_settings_update
+    discord_bot.on_manual_start_callback = on_manual_start
+    discord_bot.on_manual_stop_callback = on_manual_stop
+    discord_bot.get_monitor_status_callback = get_monitor_status
 
     # Start the Discord bot in the background
     bot_task = asyncio.create_task(discord_bot.start(discord_bot.token))
