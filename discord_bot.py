@@ -13,6 +13,7 @@ class DiscordBot(commands.Bot):
         self.on_channel_update = None  # Callback for channel updates
         self.on_guild_join_callback = None  # Callback for when bot joins a guild
         self.on_guild_remove_callback = None  # Callback for when bot leaves a guild
+        self.on_settings_update_callback = None  # Callback when any setting is updated
 
     async def setup_hook(self):
         # Commands are auto-registered when using @bot.tree.command()
@@ -66,9 +67,15 @@ def setup_commands(bot):
         if guild_id not in bot.guild_settings:
             bot.guild_settings[guild_id] = {}
         bot.guild_settings[guild_id]["holodex_channel_id"] = channel_id
+        
         # Notify main.py of the channel update
         if bot.on_channel_update:
             bot.on_channel_update(guild_id, channel_id)
+        
+        # Check if monitoring should start/stop
+        if bot.on_settings_update_callback:
+            await bot.on_settings_update_callback(guild_id, bot)
+            
         await interaction.response.send_message(f"Holodex channel ID set to `{channel_id}`.", ephemeral=True)
 
     @bot.tree.command(name="set_output_channel", description="Set the Discord channel to send transcripts to.")
@@ -78,4 +85,35 @@ def setup_commands(bot):
         if guild_id not in bot.guild_settings:
             bot.guild_settings[guild_id] = {}
         bot.guild_settings[guild_id]["output_channel_id"] = channel.id
-        await interaction.response.send_message(f"Output channel set to {channel.mention}.", ephemeral=True) 
+        
+        # Check if monitoring should start/stop
+        if bot.on_settings_update_callback:
+            await bot.on_settings_update_callback(guild_id, bot)
+            
+        await interaction.response.send_message(f"Output channel set to {channel.mention}.", ephemeral=True)
+
+    @bot.tree.command(name="status", description="Check the current configuration and monitoring status.")
+    async def status(interaction: discord.Interaction):
+        guild_id = interaction.guild_id
+        settings = bot.get_guild_settings(guild_id)
+        
+        holodex_id = settings.get("holodex_channel_id", "Not set")
+        output_id = settings.get("output_channel_id")
+        output_channel = f"<#{output_id}>" if output_id else "Not set"
+        
+        # Check if monitoring is active (this would need to be passed from main.py)
+        status_text = "✅ **Configuration Status:**\n"
+        status_text += f"**Holodex Channel ID:** {holodex_id}\n"
+        status_text += f"**Output Channel:** {output_channel}\n"
+        
+        if holodex_id != "Not set" and output_id:
+            status_text += "\n🟢 **Status:** Monitoring active"
+        else:
+            status_text += "\n🔴 **Status:** Monitoring inactive (incomplete configuration)"
+            status_text += "\n\n**To start monitoring:**"
+            if holodex_id == "Not set":
+                status_text += "\n• Set Holodex channel ID with `/set_monitor_channel`"
+            if not output_id:
+                status_text += "\n• Set output channel with `/set_output_channel`"
+        
+        await interaction.response.send_message(status_text, ephemeral=True) 

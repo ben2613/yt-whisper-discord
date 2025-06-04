@@ -20,6 +20,15 @@ POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
 monitors = {}
 tasks = {}
 
+def is_guild_configured(bot, guild_id):
+    """Check if guild has both holodex_channel_id and output_channel_id configured"""
+    settings = bot.get_guild_settings(guild_id)
+    has_holodex_channel = bool(settings.get("holodex_channel_id"))
+    has_output_channel = bool(settings.get("output_channel_id"))
+    
+    print(f"Guild {guild_id} config check - Holodex: {has_holodex_channel}, Output: {has_output_channel}")
+    return has_holodex_channel and has_output_channel
+
 async def monitor_guild(guild_id, bot):
     """Monitor a specific guild for live streams"""
     # Create or get the HolodexMonitor for this guild
@@ -45,12 +54,18 @@ async def monitor_guild(guild_id, bot):
         raise
 
 async def start_guild_monitor(guild_id, bot):
-    """Start monitoring for a specific guild"""
+    """Start monitoring for a specific guild if properly configured"""
+    if not is_guild_configured(bot, guild_id):
+        print(f"Guild {guild_id} not fully configured - skipping monitor start")
+        return False
+    
     if guild_id not in tasks:
         print(f"Starting monitor for guild {guild_id}")
         tasks[guild_id] = asyncio.create_task(monitor_guild(guild_id, bot))
+        return True
     else:
         print(f"Monitor for guild {guild_id} already running")
+        return False
 
 async def stop_guild_monitor(guild_id):
     """Stop monitoring for a specific guild"""
@@ -67,21 +82,38 @@ async def stop_guild_monitor(guild_id):
     if guild_id in monitors:
         del monitors[guild_id]
 
+async def check_and_start_monitor(guild_id, bot):
+    """Check if guild is configured and start/stop monitor accordingly"""
+    if is_guild_configured(bot, guild_id):
+        # If not already running, start it
+        if guild_id not in tasks:
+            started = await start_guild_monitor(guild_id, bot)
+            if started:
+                print(f"✅ Monitor started for guild {guild_id} - configuration complete!")
+    else:
+        # If running but no longer configured, stop it
+        if guild_id in tasks:
+            await stop_guild_monitor(guild_id)
+            print(f"⚠️ Monitor stopped for guild {guild_id} - configuration incomplete")
+
 def on_channel_update(guild_id, new_channel_id):
     """Update the HolodexMonitor for this guild when channel changes"""
     if guild_id in monitors:
         monitors[guild_id].set_channel_id(new_channel_id)
     else:
         monitors[guild_id] = HolodexMonitor(new_channel_id)
-    # Optionally, you could restart the monitor task if needed
 
 async def on_guild_join(guild_id, bot):
-    """Called when bot joins a new guild - start monitoring"""
+    """Called when bot joins a new guild - start monitoring if configured"""
     await start_guild_monitor(guild_id, bot)
 
 async def on_guild_remove(guild_id):
     """Called when bot leaves a guild - stop monitoring"""
     await stop_guild_monitor(guild_id)
+
+async def on_settings_update(guild_id, bot):
+    """Called when guild settings are updated - check if monitoring should start/stop"""
+    await check_and_start_monitor(guild_id, bot)
 
 async def main():
     discord_bot = DiscordBot(DISCORD_TOKEN)
@@ -93,6 +125,7 @@ async def main():
     discord_bot.on_channel_update = on_channel_update
     discord_bot.on_guild_join_callback = on_guild_join
     discord_bot.on_guild_remove_callback = on_guild_remove
+    discord_bot.on_settings_update_callback = on_settings_update
 
     # Start the Discord bot in the background
     bot_task = asyncio.create_task(discord_bot.start(discord_bot.token))
@@ -100,7 +133,7 @@ async def main():
     # Wait for the bot to be ready and have guilds
     await asyncio.sleep(5)  # Placeholder: replace with proper event/wait
 
-    # Start monitors for all existing guilds
+    # Start monitors for all existing guilds (only if properly configured)
     for guild in discord_bot.guilds:
         await start_guild_monitor(guild.id, discord_bot)
 
