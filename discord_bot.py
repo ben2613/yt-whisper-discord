@@ -11,11 +11,28 @@ class DiscordBot(commands.Bot):
         # {guild_id: {"holodex_channel_id": str, "output_channel_id": int}}
         self.guild_settings = {}
         self.on_channel_update = None  # Callback for channel updates
+        self.on_guild_join_callback = None  # Callback for when bot joins a guild
+        self.on_guild_remove_callback = None  # Callback for when bot leaves a guild
 
     async def setup_hook(self):
         # Commands are auto-registered when using @bot.tree.command()
         await self.tree.sync()
         print("Slash commands synced globally")
+
+    async def on_guild_join(self, guild):
+        """Called when the bot joins a new guild"""
+        print(f"Bot joined guild: {guild.name} (ID: {guild.id})")
+        if self.on_guild_join_callback:
+            await self.on_guild_join_callback(guild.id, self)
+
+    async def on_guild_remove(self, guild):
+        """Called when the bot leaves a guild"""
+        print(f"Bot left guild: {guild.name} (ID: {guild.id})")
+        # Clean up guild settings
+        if guild.id in self.guild_settings:
+            del self.guild_settings[guild.id]
+        if self.on_guild_remove_callback:
+            await self.on_guild_remove_callback(guild.id)
 
     # Add error handler for slash command errors
     async def on_app_command_error(self, interaction, error):
