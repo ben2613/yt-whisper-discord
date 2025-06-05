@@ -48,12 +48,15 @@ async def monitor_guild(guild_id, bot):
 
     try:
         while True:
-            # Always use the current channel_id from the monitor
             live_video_id = await holodex.get_live_video_id()
             if live_video_id:
-                # Start audio streaming, transcription, and Discord posting
-                # (To be implemented: stream audio, transcribe, send to Discord)
-                pass
+                async with await whisper.start_streaming() as whisper_stream:
+                    async for audio_chunk in audio_streamer.stream_audio(live_video_id):
+                        await whisper_stream.feed(audio_chunk)
+                        async for transcript in whisper_stream.get_transcripts():
+                            if transcript:
+                                await bot.send_transcript(guild_id, transcript)
+                # Optionally: break or continue if stream ends
             await asyncio.sleep(POLL_INTERVAL)
     except asyncio.CancelledError:
         print(f"Monitor task for guild {guild_id} was cancelled")
