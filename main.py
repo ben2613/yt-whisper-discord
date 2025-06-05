@@ -8,6 +8,7 @@ from audio_streamer import AudioStreamer
 from whisper_transcriber import WhisperTranscriber
 from discord_bot import DiscordBot, setup_commands
 from dotenv import load_dotenv
+from typing import Dict
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,9 +18,9 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_DISCORD_BOT_TOKEN")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
 
 # Global dicts to manage monitors and tasks per guild
-monitors = {}
-tasks = {}
-manually_stopped = {}  # Track which guilds have been manually stopped
+monitors: Dict[int, HolodexMonitor] = {}
+tasks: Dict[int, asyncio.Task] = {}
+manually_stopped: Dict[int, bool] = {}  # Track which guilds have been manually stopped
 
 def is_guild_configured(bot, guild_id):
     """Check if guild has both holodex_channel_id and output_channel_id configured"""

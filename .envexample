@@ -1,12 +1,10 @@
 # Example .env file for yt-whisper-discord
 
-# The Holodex (YouTube) channel ID to monitor by default
-HOLODEX_CHANNEL_ID=YOUR_HOLODEX_CHANNEL_ID
-
 # Your Discord bot token
 DISCORD_TOKEN=YOUR_DISCORD_BOT_TOKEN
 
 # Poll interval in seconds
 POLL_INTERVAL=10
 
-USE_DIART=False
+# Holodex API key
+HOLODEX_API_KEY=YOUR_HOLODEX_API_KEY
