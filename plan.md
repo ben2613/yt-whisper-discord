@@ -130,4 +130,48 @@ yt-whisper-discord/
 ## References
 - [ufal/whisper_streaming](https://github.com/ufal/whisper_streaming)
 - [Holodex API Docs](https://holodex.stoplight.io/docs/holodex/)
-- [StackOverflow: Stream audio using yt-dlp in Python instead of downloading the file](https://stackoverflow.com/questions/71187954/stream-audio-using-yt-dlp-kn-python-instead-of-downloading-the-file) 
+- [StackOverflow: Stream audio using yt-dlp in Python instead of downloading the file](https://stackoverflow.com/questions/71187954/stream-audio-using-yt-dlp-kn-python-instead-of-downloading-the-file)
+
+---
+
+## Using WhisperLive TranscriptionClient for Live Transcription
+
+Instead of using ufal/whisper_streaming, we can use [WhisperLive](https://github.com/collabora/WhisperLive) for live transcription with Whisper.
+
+### Key Points
+- Use the official Python client: `whisper_live.client.TranscriptionClient`.
+- This client manages the WebSocket connection, audio streaming, and transcript retrieval.
+- **No need for manual ffmpeg** if your audio is already 16kHz mono PCM. If not, use ffmpeg or another tool to convert before sending.
+
+### Installation
+```sh
+pip install whisper-live
+```
+
+### Example Usage
+```python
+import asyncio
+from whisper_live.client import TranscriptionClient
+
+async def main():
+    async with TranscriptionClient("ws://localhost:2700") as client:
+        # Send audio data (must be 16kHz mono PCM)
+        with open("audio.raw", "rb") as f:
+            while chunk := f.read(4096):
+                await client.send_audio(chunk)
+        await client.end_audio()
+
+        # Receive transcripts
+        async for result in client.get_results():
+            print(result["text"])
+
+asyncio.run(main())
+```
+
+### Integration Plan
+- If your audio source is already 16kHz mono PCM, send chunks directly to `TranscriptionClient.send_audio`.
+- If not, transcode with ffmpeg or similar before sending.
+- Replace the current WhisperTranscriber stub with a wrapper around `TranscriptionClient`.
+- In the pipeline, after getting audio chunks, send them to the client and yield transcripts as they arrive.
+
+**Reference:** [WhisperLive GitHub](https://github.com/collabora/WhisperLive) 
